@@ -19,6 +19,17 @@
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
+const std::vector<const char*> validationLayers = {
+	"VK_LAYER_KHRONOS_validation"
+};
+
+//#define NDEBUG
+#ifdef NDEBUG
+	const bool enableValidationLayers = false;
+#else 
+	const bool enableValidationLayers = true;
+#endif
+
 class HelloTriangleApplication {
 public:
 	void run() {
@@ -49,7 +60,25 @@ private:
 	}
 
 
+	void mainLoop() {
+		while (!glfwWindowShouldClose(window)) {
+			glfwPollEvents();
+		}
+	}
+
+
+	void cleanup() {
+		vkDestroyInstance(instance, nullptr);
+
+		glfwDestroyWindow(window);
+		glfwTerminate();
+	}
+
 	void createInstance() {
+		if (enableValidationLayers && !checkValidationLayerSupport()) {
+			throw std::runtime_error("validation layers requested, but not available!");
+		}
+
 		// Optional struct but helpful
 		VkApplicationInfo appInfo{};
 		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -71,7 +100,13 @@ private:
 
 		createInfo.enabledExtensionCount = glfwExtensionCount;
 		createInfo.ppEnabledExtensionNames = glfwExtensions;
-		createInfo.enabledLayerCount = 0;
+
+		if (enableValidationLayers) {
+			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+			createInfo.ppEnabledLayerNames = validationLayers.data();
+		} else {
+			createInfo.enabledLayerCount = 0;
+		}
 
 		// Check for extension support [OPTIONAL]
 		uint32_t extensionCount = 0;
@@ -108,52 +143,68 @@ private:
 		const char* glfw_extensions[],
 		uint32_t* glfwExtensionCount
 	) {
-		bool is_current_ext_supported = false;
-
 		/*
 		 * Iterate through every glfwExtension.
 		 *	For every glfwExtension, iterate through all Vulkan Instance Extensions and check if the
 		 *	name of one Vulkan Instance Extension matches the current glfwExtension.
 		 *
-		 * If `is_current_ext_supported` is never changed to true, then the current glfwExtension isn't
+		 * If `extension_found` is never changed to true, then the current glfwExtension isn't
 		 * supported. Otherwise we'll finish both loops and return true;
 		 */
 		std::cout << "Supported GLFW extensions:" << std::endl;
 		for (uint32_t i = 0; i < *glfwExtensionCount; i++) {
-			is_current_ext_supported = false; // Reset for every glfwExtension
+			bool extension_found = false; // Reset for every glfwExtension
 			
 			for (const auto& extension : *vulkan_instance_extensions) {
 				if (strcmp(glfw_extensions[i], extension.extensionName) == 0) {
 					std::cout << '\t' << glfw_extensions[i] << std::endl;
-					is_current_ext_supported = true;
+					extension_found = true;
 					break;
 				}
 			}
 
-			if (!is_current_ext_supported) return false;
+			if (!extension_found) return false;
 		}
 
 		return true;
 	}
 
 
-	void mainLoop() {
-		while (!glfwWindowShouldClose(window)) {
-			glfwPollEvents();
+	bool checkValidationLayerSupport() {
+		uint32_t layerCount;
+		vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+		std::vector<VkLayerProperties> availableLayers(layerCount);
+		vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+		for (const char* layerName : validationLayers) {
+			bool layerFound = false;
+
+			for (const auto& layerProperties : availableLayers) {
+				if (strcmp(layerName, layerProperties.layerName) == 0) {
+					layerFound = true;
+					break;
+				}
+			}
+
+			if (!layerFound) return false;
 		}
+
+		return true;
 	}
 
 
-	void cleanup() {
-		vkDestroyInstance(instance, nullptr);
-
-		glfwDestroyWindow(window);
-		glfwTerminate();
-	}
 };
 
 
 int main(int argc, char* argv[]) {
+	if (enableValidationLayers) {
+		std::cout << "VALIDATION LAYERS ENABLED!" << std::endl;
+	}
+	else {	
+		std::cout << "VALIDATION LAYERS DISABLED!" << std::endl;
+	}
+
 	HelloTriangleApplication app;
 
 	try {
