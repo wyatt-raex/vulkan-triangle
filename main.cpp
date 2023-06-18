@@ -25,10 +25,31 @@ const std::vector<const char*> validationLayers = {
 
 //#define NDEBUG
 #ifdef NDEBUG
+	const bool log_extensions = false;
 	const bool enableValidationLayers = false;
 #else 
+	const bool log_extensions = true;
 	const bool enableValidationLayers = true;
 #endif
+
+
+VkResult CreateDebugUtilsMessengerEXT(
+	VkInstance instance,
+	const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+	const VkAllocationCallbacks* pAllocator,
+	VkDebugUtilsMessengerEXT* pDebugMessenger
+) {
+
+	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)
+		vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+
+	if (func != nullptr) {
+		return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+	} else {
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
+	}
+}
+
 
 class HelloTriangleApplication {
 public:
@@ -42,7 +63,9 @@ public:
 
 private:
 	GLFWwindow* window;
+
 	VkInstance instance;
+	VkDebugUtilsMessengerEXT debugMessenger;
 
 
 	void initWindow() {
@@ -57,6 +80,7 @@ private:
 
 	void initVulkan() {
 		createInstance();
+		setupDebugMessenger();
 	}
 
 
@@ -94,12 +118,9 @@ private:
 		createInfo.pApplicationInfo = &appInfo;
 
 		// Get required extension(s) info from GLFW
-		uint32_t glfwExtensionCount = 0;
-		const char** glfwExtensions;
-		glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-		createInfo.enabledExtensionCount = glfwExtensionCount;
-		createInfo.ppEnabledExtensionNames = glfwExtensions;
+		auto extensions = getRequiredExtensions();
+		createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+		createInfo.ppEnabledExtensionNames = extensions.data();
 
 		if (enableValidationLayers) {
 			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
@@ -109,21 +130,8 @@ private:
 		}
 
 		// Check for extension support [OPTIONAL]
-		uint32_t extensionCount = 0;
-		// Get number of extensions and store into `extensionCount`
-		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); 
-
-		// Now get the names of each extension then print it out to std::out
-		std::vector<VkExtensionProperties> extensions(extensionCount);
-		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
-
-		std::cout << "Available extensions:" << std::endl;
-		for (const auto& extension : extensions) {
-			std::cout << '\t' << extension.extensionName << std::endl;
-		}
-
 		// Check if all GLFW extensions are supported by our current list of Vulkan Instance Extensions
-		if (isGLFWExtensionsSupported(&extensions, glfwExtensions, &glfwExtensionCount)) {
+		if (isGLFWExtensionsSupported(&extensions)) {
 			std::cout << "All GLFW Extensions supported: true" << std::endl;
 		}
 		else {
@@ -138,10 +146,46 @@ private:
 	}
 
 
+	void setupDebugMessenger() {
+		if (!enableValidationLayers) return;
+
+		VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+		populateDebugMessengerCreateInfo(createInfo);
+
+		if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+			throw std::runtime_error("failed to set up debug messenger!");
+	}
+
+	
+	void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {	
+		createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+		createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+		createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+		createInfo.pfnUserCallback = debugCallback;
+		createInfo.pUserData = nullptr; // Optional
+	}
+
+
+	std::vector<const char*> getRequiredExtensions() {
+		uint32_t glfwExtensionCount = 0;
+		const char** glfwExtensions;
+		glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+		std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+		if (enableValidationLayers)
+			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+		return extensions;
+	}
+
+
 	bool isGLFWExtensionsSupported(
-		std::vector<VkExtensionProperties>* vulkan_instance_extensions, 
-		const char* glfw_extensions[],
-		uint32_t* glfwExtensionCount
+		std::vector<const char*>* glfw_extensions
 	) {
 		/*
 		 * Iterate through every glfwExtension.
@@ -151,13 +195,33 @@ private:
 		 * If `extension_found` is never changed to true, then the current glfwExtension isn't
 		 * supported. Otherwise we'll finish both loops and return true;
 		 */
+		
+		uint32_t vk_extension_count = 0;
+		// Get number of extensions and store into `vk_extension_count
+		vkEnumerateInstanceExtensionProperties(nullptr, &vk_extension_count, nullptr); 
+		std::vector<VkExtensionProperties> vk_extensions(vk_extension_count);
+	
+		// Now get the names of each extension then print it out to std::out
+		vkEnumerateInstanceExtensionProperties(nullptr, &vk_extension_count, vk_extensions.data());
+
+		if (log_extensions) {
+			std::cout << "Available Vulkan Extensions:" << std::endl;
+
+			for (const auto& extension : vk_extensions) {
+				std::cout << '\t' << extension.extensionName << std::endl;
+			}
+		}	
+
 		std::cout << "Supported GLFW extensions:" << std::endl;
-		for (uint32_t i = 0; i < *glfwExtensionCount; i++) {
-			bool extension_found = false; // Reset for every glfwExtension
+		for (const auto& glfw_extension : *glfw_extensions) {
+			bool extension_found = false; //Reset for every glfw_extension
 			
-			for (const auto& extension : *vulkan_instance_extensions) {
-				if (strcmp(glfw_extensions[i], extension.extensionName) == 0) {
-					std::cout << '\t' << glfw_extensions[i] << std::endl;
+			for (const auto& vk_extension : vk_extensions) {
+
+				if (strcmp(glfw_extension, vk_extension.extensionName) == 0) {
+					if (log_extensions)
+						std::cout << '\t' << glfw_extension << std::endl;
+					
 					extension_found = true;
 					break;
 				}
@@ -191,6 +255,19 @@ private:
 		}
 
 		return true;
+	}
+
+
+	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+		void* pUserData
+	) {
+		
+		std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+
+		return VK_FALSE;
 	}
 
 
