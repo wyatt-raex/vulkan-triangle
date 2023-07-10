@@ -1,0 +1,3 @@
+[submodule "notes-vulkan-tutorial"]
+	path = notes-vulkan-tutorial
+	url = git@github.com:wyatt-raex/notes-vulkan-tutorial.git
