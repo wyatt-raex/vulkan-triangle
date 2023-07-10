@@ -11,11 +11,11 @@
 #include <GLFW/glfw3.h>
 
 #include <cstdlib>
-#include <iostream>
-#include <stdexcept>
 #include <cstring>
-#include <vector>
+#include <iostream>
 #include <optional>
+#include <stdexcept>
+#include <vector>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -90,11 +90,12 @@ private:
 
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
-	VkDevice device;
-	VkQueue graphicsQueue;
+	VkSurfaceKHR surface;
 
+	VkDevice device;
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
+	VkQueue graphicsQueue;
 
 	void initWindow() {
 		glfwInit();
@@ -109,6 +110,7 @@ private:
 	void initVulkan() {
 		createInstance();
 		setupDebugMessenger();
+		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
 	}
@@ -128,6 +130,7 @@ private:
 			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 		}
 
+		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkDestroyInstance(instance, nullptr);
 
 		glfwDestroyWindow(window);
@@ -298,6 +301,13 @@ private:
 		}
 
 		return true;
+	}
+
+
+	void createSurface() {
+		if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create window surface!");
+		}
 	}
 
 
